@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Assessment</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #D4E09B;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            background-color: #A44A3F;
+            padding-top: 20px;
+        }
+
+        .sidebar a {
+            color: white;
+            padding: 15px;
+            display: block;
+            text-decoration: none;
+            font-size: 18px;
+        }
+
+        .sidebar a:hover {
+            background-color: #CBDFBD;
+            color: black;
+        }
+
+        .content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        .navbar-custom {
+            background-color: #F6C79;
+        }
+
+        .review-box {
+            background-color: #CBDFBD;
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h3 class="text-center text-white mb-4">CMS</h3>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="upload.html">Upload Assessment</a>
+        <a href="review.html">Review Assessments</a>
+        <a href="login.html">Logout</a>
+    </div>
+
+    <div class="content">
+
+        <nav class="navbar navbar-custom mb-4 p-3 rounded">
+            <span class="navbar-brand mb-0 h1">Review Assessment</span>
+        </nav>
+
+        <div class="review-box">
+            <h4>Assessment Details</h4>
+            <p><strong>Title:</strong> Assignment 1</p>
+            <p><strong>Subject:</strong> ICT304</p>
+            <p><strong>Status:</strong> Under Review</p>
+
+            <hr>
+
+            <h4>Feedback</h4>
+            <textarea class="form-control" rows="5"></textarea>
+
+            <div class="mt-3">
+                <button class="btn btn-success">Approve</button>
+                <button class="btn btn-warning">Request Changes</button>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>
