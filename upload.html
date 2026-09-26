@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Assessment</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #D4E09B;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            background-color: #A44A3F;
+            padding-top: 20px;
+        }
+
+        .sidebar a {
+            color: white;
+            padding: 15px;
+            display: block;
+            text-decoration: none;
+            font-size: 18px;
+        }
+
+        .sidebar a:hover,
+        .sidebar a.active {
+            background-color: #CBDFBD;
+            color: black;
+        }
+
+        .content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        .navbar-custom {
+            background-color: #F6C7A9;
+        }
+
+        .form-box {
+            background-color: #CBDFBD;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .drop-zone {
+            border: 2px dashed #A44A3F;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            background-color: #F6F9F1;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .drop-zone:hover {
+            background-color: #EAF1E0;
+        }
+
+        .drop-zone.drag-over {
+            background-color: #D4E09B;
+            border-color: #7a3329;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h3 class="text-center text-white mb-4">CMS</h3>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="upload.html" id="uploadLink">Upload Assessment</a>
+        <a href="review.html">Review Assessments</a>
+        <a href="audit.html" id="auditLink" style="display:none;">Audit Log</a>
+        <a href="#" id="logoutLink">Logout</a>
+    </div>
+
+    <div class="content">
+
+        <nav class="navbar navbar-custom mb-4 p-3 rounded">
+            <span class="navbar-brand mb-0 h1">Upload Assessment</span>
+        </nav>
+
+        <div id="statusMessage" class="alert" style="display:none;"></div>
+
+        <div id="notAllowedMessage" class="alert alert-warning" style="display:none;">
+            Only lecturers can upload assessments. Your account is registered as a reviewer.
+        </div>
+
+        <div class="form-box" id="uploadFormBox">
+            <form id="uploadForm">
+                <div class="mb-3">
+                    <label>Assessment Title</label>
+                    <input type="text" id="title" class="form-control" required>
+                </div>
+
+                <div class="mb-3">
+                    <label>Subject Code</label>
+                    <input type="text" id="subjectCode" class="form-control" placeholder="e.g. ICT304" required>
+                </div>
+
+                <div class="mb-3">
+                    <label>Assessment Type</label>
+                    <select id="assessmentType" class="form-control">
+                        <option>Assignment</option>
+                        <option>Quiz</option>
+                        <option>Exam</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label>Semester</label>
+                    <select id="semester" class="form-control">
+                        <option>Semester 1 2026</option>
+                        <option>Semester 2 2026</option>
+                        <option>Summer 2026</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label>Upload File</label>
+                    <div id="dropZone" class="drop-zone">
+                        <p class="mb-1">Drag &amp; drop your file here, or click to browse</p>
+                        <p class="text-muted small mb-0">Accepted formats: PDF, DOC, DOCX, ZIP (max 20MB)</p>
+                        <p id="selectedFileName" class="mt-2 fw-bold" style="display:none;"></p>
+                        <input type="file" id="file" accept=".pdf,.doc,.docx,.zip" style="display:none;">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success">Submit Assessment</button>
+            </form>
+        </div>
+
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        // "Remember Me" on login decides whether the token lives in localStorage
+        // (persists after the browser closes) or sessionStorage (cleared on close).
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+
+        // Guard: bounce back to login if there's no token at all
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Only lecturers/admins can upload — reviewers see a message instead of the form.
+        if (user && user.role === 'reviewer') {
+            document.getElementById('uploadLink').style.display = 'none';
+            document.getElementById('uploadFormBox').style.display = 'none';
+            document.getElementById('notAllowedMessage').style.display = 'block';
+        }
+
+        // Audit Log is admin-only.
+        if (user && user.role === 'admin') {
+            document.getElementById('auditLink').style.display = 'block';
+        }
+
+        document.getElementById('logoutLink').addEventListener('click', function (e) {
+            e.preventDefault();
+            clearSession();
+            window.location.href = 'login.html';
+        });
+
+        function clearSession() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+        }
+
+        // Returns true (and redirects to login) if the token has expired or
+        // been invalidated mid-session — e.g. it was valid when the page
+        // loaded but the 8-hour JWT expiry passed while the form was open.
+        function sessionExpired(response) {
+            if (response.status === 401) {
+                clearSession();
+                window.location.href = 'login.html';
+                return true;
+            }
+            return false;
+        }
+
+        // Highlight the current page's link in the sidebar
+        document.querySelectorAll('.sidebar a').forEach(link => {
+            if (link.getAttribute('href') === window.location.pathname.split('/').pop()) {
+                link.classList.add('active');
+            }
+        });
+
+        // --- Drag & drop file zone ---
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('file');
+        const selectedFileName = document.getElementById('selectedFileName');
+
+        function showSelectedFile() {
+            if (fileInput.files.length > 0) {
+                selectedFileName.textContent = `Selected: ${fileInput.files[0].name}`;
+                selectedFileName.style.display = 'block';
+            } else {
+                selectedFileName.style.display = 'none';
+            }
+        }
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', showSelectedFile);
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('drag-over');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('drag-over');
+            });
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                showSelectedFile();
+            }
+        });
+
+        document.getElementById('uploadForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const statusBox = document.getElementById('statusMessage');
+            statusBox.style.display = 'none';
+
+            // Client-side file checks — catches obvious problems immediately
+            // instead of waiting on a round trip to the server.
+            const allowedExtensions = ['.pdf', '.doc', '.docx', '.zip'];
+            const maxSizeBytes = 20 * 1024 * 1024; // matches the server's 20MB limit
+
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const ext = '.' + file.name.split('.').pop().toLowerCase();
+
+                if (!allowedExtensions.includes(ext)) {
+                    statusBox.className = 'alert alert-danger';
+                    statusBox.textContent = `"${ext}" isn't an accepted file type. Please use PDF, DOC, DOCX, or ZIP.`;
+                    statusBox.style.display = 'block';
+                    return;
+                }
+
+                if (file.size > maxSizeBytes) {
+                    statusBox.className = 'alert alert-danger';
+                    statusBox.textContent = `That file is ${(file.size / 1024 / 1024).toFixed(1)}MB, which is over the 20MB limit.`;
+                    statusBox.style.display = 'block';
+                    return;
+                }
+            }
+
+            // multipart/form-data is required because a file is attached —
+            // do NOT set a Content-Type header here, the browser sets the
+            // correct multipart boundary automatically.
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('subjectCode', document.getElementById('subjectCode').value);
+            formData.append('assessmentType', document.getElementById('assessmentType').value);
+            formData.append('semester', document.getElementById('semester').value);
+
+            if (fileInput.files.length > 0) {
+                formData.append('file', fileInput.files[0]);
+            }
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/assessments`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: formData,
+                });
+
+                if (sessionExpired(response)) return;
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    statusBox.className = 'alert alert-danger';
+                    statusBox.textContent = data.error || 'Upload failed.';
+                    statusBox.style.display = 'block';
+                    return;
+                }
+
+                statusBox.className = 'alert alert-success';
+                statusBox.textContent = 'Assessment submitted successfully.';
+                statusBox.style.display = 'block';
+                document.getElementById('uploadForm').reset();
+                selectedFileName.style.display = 'none';
+            } catch (err) {
+                statusBox.className = 'alert alert-danger';
+                statusBox.textContent = 'Could not reach the server. Is it running?';
+                statusBox.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
+        });
+    </script>
+
+</body>
+</html>

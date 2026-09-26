@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Assessment</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #D4E09B;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            background-color: #A44A3F;
+            padding-top: 20px;
+        }
+
+        .sidebar a {
+            color: white;
+            padding: 15px;
+            display: block;
+            text-decoration: none;
+            font-size: 18px;
+        }
+
+        .sidebar a:hover,
+        .sidebar a.active {
+            background-color: #CBDFBD;
+            color: black;
+        }
+
+        .content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        .navbar-custom {
+            background-color: #F6C7A9;
+        }
+
+        .review-box {
+            background-color: #CBDFBD;
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h3 class="text-center text-white mb-4">CMS</h3>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="upload.html" id="uploadLink">Upload Assessment</a>
+        <a href="review.html">Review Assessments</a>
+        <a href="audit.html" id="auditLink" style="display:none;">Audit Log</a>
+        <a href="#" id="logoutLink">Logout</a>
+    </div>
+
+    <div class="content">
+
+        <nav class="navbar navbar-custom mb-4 p-3 rounded">
+            <span class="navbar-brand mb-0 h1">Review Assessment</span>
+        </nav>
+
+        <div id="statusMessage" class="alert" style="display:none;"></div>
+
+        <!-- Shown when no specific assessment is selected (review.html) -->
+        <div id="listView" class="card p-3" style="background-color:#CBDFBD;">
+            <h4 class="mb-3">Select an Assessment to Review</h4>
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Reviewer</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="listTableBody">
+                    <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Shown when review.html?id=N is opened -->
+        <div id="detailView" class="review-box" style="display:none;">
+            <h4>Assessment Details</h4>
+            <p><strong>Title:</strong> <span id="detailTitle"></span></p>
+            <p><strong>Subject:</strong> <span id="detailSubject"></span></p>
+            <p><strong>Status:</strong> <span id="detailStatus"></span></p>
+            <p><strong>Assigned Reviewer:</strong> <span id="detailReviewer"></span></p>
+            <p id="fileLinkWrapper" style="display:none;">
+                <strong>Uploaded File:</strong> <a id="fileLink" href="#" target="_blank">View / Download</a>
+            </p>
+            <p id="noFileMessage" class="text-muted" style="display:none;">No file was attached to this assessment.</p>
+
+            <hr>
+
+            <div id="feedbackSection">
+                <h4>Feedback</h4>
+
+                <textarea id="feedbackText" class="form-control" rows="5"></textarea>
+                <p id="draftSavedNote" class="text-muted small mt-1" style="display:none;"></p>
+
+                <div class="mt-3">
+                    <button id="saveDraftBtn" type="button" class="btn btn-outline-secondary">Save Draft</button>
+                    <button id="approveBtn" class="btn btn-success">Approve</button>
+                    <button id="requestChangesBtn" class="btn btn-warning">Request Changes</button>
+                </div>
+            </div>
+
+            <div id="readOnlyMessage" class="alert alert-secondary mt-3" style="display:none;">
+                Only reviewers can approve or request changes. You're viewing this in read-only mode.
+            </div>
+
+            <!-- Shown only to the lecturer who uploaded this assessment, when it's not yet Approved -->
+            <div id="editSection" class="mt-4" style="display:none;">
+                <hr>
+                <h4>Edit &amp; Resubmit</h4>
+                <p class="text-muted">Editing will move this assessment back to "Pending" for re-review.</p>
+                <form id="editForm">
+                    <div class="mb-3">
+                        <label>Assessment Title</label>
+                        <input type="text" id="editTitle" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label>Subject Code</label>
+                        <input type="text" id="editSubjectCode" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label>Assessment Type</label>
+                        <select id="editAssessmentType" class="form-control">
+                            <option>Assignment</option>
+                            <option>Quiz</option>
+                            <option>Exam</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Replace File (optional)</label>
+                        <input type="file" id="editFile" class="form-control">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save & Resubmit</button>
+                </form>
+            </div>
+
+            <div class="mt-3">
+                <a href="review.html" class="btn btn-secondary">Back to List</a>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Only lecturers/admins can upload — hide that link for reviewers.
+        if (user && user.role === 'reviewer') {
+            document.getElementById('uploadLink').style.display = 'none';
+        }
+
+        // Audit Log is admin-only.
+        if (user && user.role === 'admin') {
+            document.getElementById('auditLink').style.display = 'block';
+        }
+
+        // Only reviewers/admins can approve or request changes.
+        if (user && user.role === 'lecturer') {
+            document.getElementById('feedbackSection').style.display = 'none';
+            document.getElementById('readOnlyMessage').style.display = 'block';
+        }
+
+        document.getElementById('logoutLink').addEventListener('click', function (e) {
+            e.preventDefault();
+            clearSession();
+            window.location.href = 'login.html';
+        });
+
+        function clearSession() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+        }
+
+        // Returns true (and redirects to login) if the token has expired or
+        // been invalidated mid-session.
+        function sessionExpired(response) {
+            if (response.status === 401) {
+                clearSession();
+                window.location.href = 'login.html';
+                return true;
+            }
+            return false;
+        }
+
+        // Highlight the current page's link in the sidebar
+        document.querySelectorAll('.sidebar a').forEach(link => {
+            if (link.getAttribute('href') === window.location.pathname.split('/').pop()) {
+                link.classList.add('active');
+            }
+        });
+
+        function showStatus(message, isError) {
+            const box = document.getElementById('statusMessage');
+            box.className = isError ? 'alert alert-danger' : 'alert alert-success';
+            box.textContent = message;
+            box.style.display = 'block';
+        }
+
+        // Read ?id= from the URL, e.g. review.html?id=3
+        const params = new URLSearchParams(window.location.search);
+        const assessmentId = params.get('id');
+
+        if (assessmentId) {
+            loadDetail(assessmentId);
+        } else {
+            loadList();
+        }
+
+        let reviewersCache = null;
+
+        async function getReviewers() {
+            if (reviewersCache) return reviewersCache;
+            const response = await fetch(`${API_URL}/api/reviewers`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (sessionExpired(response)) return [];
+            if (!response.ok) return [];
+            reviewersCache = await response.json();
+            return reviewersCache;
+        }
+
+        async function loadList() {
+            document.getElementById('listView').style.display = 'block';
+            document.getElementById('detailView').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_URL}/api/assessments`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (sessionExpired(response)) return;
+                const assessments = await response.json();
+
+                if (!response.ok) throw new Error(assessments.error || 'Failed to load.');
+
+                // Only lecturers/admins can assign reviewers, so only they need the reviewer list.
+                const canAssign = user && (user.role === 'lecturer' || user.role === 'admin');
+                const reviewers = canAssign ? await getReviewers() : [];
+
+                const tbody = document.getElementById('listTableBody');
+                tbody.innerHTML = '';
+
+                if (assessments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">No assessments found.</td></tr>';
+                    return;
+                }
+
+                assessments.forEach(a => {
+                    const reviewerName = a.reviewer?.User?.fullName;
+                    const isOwner = user && a.uploader && user.id === a.uploader.id;
+
+                    let reviewerCell;
+                    if (reviewerName) {
+                        reviewerCell = reviewerName;
+                    } else if (canAssign && (isOwner || user.role === 'admin')) {
+                        const options = reviewers
+                            .map(r => `<option value="${r.User.id}">${r.User.fullName}</option>`)
+                            .join('');
+                        reviewerCell = `
+                            <select class="form-select form-select-sm assign-select" style="display:inline-block; width:auto;">
+                                ${options}
+                            </select>
+                            <button class="btn btn-sm btn-primary assign-btn" data-assessment-id="${a.id}">Assign</button>
+                        `;
+                    } else {
+                        reviewerCell = 'Unassigned';
+                    }
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${a.title}</td>
+                        <td>${a.subjectCode}</td>
+                        <td>${a.status?.statusName || 'Unknown'}</td>
+                        <td>${reviewerCell}</td>
+                        <td><a href="review.html?id=${a.id}" class="btn btn-sm btn-secondary">Review</a></td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (err) {
+                showStatus(err.message || 'Could not reach the server.', true);
+            }
+        }
+
+        // Event delegation: handles clicks on any "Assign" button, even ones added after page load
+        document.getElementById('listTableBody').addEventListener('click', async function (e) {
+            if (!e.target.classList.contains('assign-btn')) return;
+
+            const assessmentId = e.target.dataset.assessmentId;
+            const select = e.target.previousElementSibling;
+            const reviewerUserId = Number(select.value);
+
+            const btn = e.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Assigning...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/assessments/${assessmentId}/assign`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ reviewerUserId }),
+                });
+
+                if (sessionExpired(response)) return;
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showStatus(data.error || 'Failed to assign reviewer.', true);
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    return;
+                }
+
+                showStatus('Reviewer assigned.', false);
+                loadList(); // refresh the table (this also rebuilds the button, so no need to reset it here)
+            } catch (err) {
+                showStatus('Could not reach the server. Is it running?', true);
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+
+        async function loadDetail(id) {
+            document.getElementById('listView').style.display = 'none';
+            document.getElementById('detailView').style.display = 'block';
+
+            try {
+                const response = await fetch(`${API_URL}/api/assessments/${id}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (sessionExpired(response)) return;
+                const assessment = await response.json();
+
+                if (!response.ok) throw new Error(assessment.error || 'Failed to load assessment.');
+
+                document.getElementById('detailTitle').textContent = assessment.title;
+                document.getElementById('detailSubject').textContent = assessment.subjectCode;
+                document.getElementById('detailStatus').textContent = assessment.status?.statusName || 'Unknown';
+                document.getElementById('detailReviewer').textContent = assessment.reviewer?.User?.fullName || 'Unassigned';
+
+                // If this reviewer isn't the one assigned to THIS assessment, show
+                // it read-only instead of Approve/Request Changes buttons that would
+                // just be rejected by the server anyway.
+                if (user && user.role === 'reviewer') {
+                    const assignedToMe = assessment.reviewer?.User?.id === user.id;
+                    const feedbackSection = document.getElementById('feedbackSection');
+                    const readOnlyMessage = document.getElementById('readOnlyMessage');
+
+                    if (assignedToMe) {
+                        feedbackSection.style.display = 'block';
+                        readOnlyMessage.style.display = 'none';
+
+                        // Pull back any saved draft so the reviewer picks up where they left off.
+                        const draftResponse = await fetch(`${API_URL}/api/reviews/${id}/draft`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (sessionExpired(draftResponse)) return;
+                        if (draftResponse.ok) {
+                            const draft = await draftResponse.json();
+                            const draftNote = document.getElementById('draftSavedNote');
+                            if (draft) {
+                                document.getElementById('feedbackText').value = draft.comment ?? '';
+                                draftNote.textContent = 'Loaded your saved draft. Not yet submitted.';
+                                draftNote.style.display = 'block';
+                            } else {
+                                draftNote.style.display = 'none';
+                            }
+                        }
+                    } else {
+                        feedbackSection.style.display = 'none';
+                        readOnlyMessage.textContent = assessment.reviewer
+                            ? "This assessment is assigned to a different reviewer. You're viewing it in read-only mode."
+                            : "This assessment hasn't been assigned to a reviewer yet.";
+                        readOnlyMessage.style.display = 'block';
+                    }
+                }
+
+                // File link — visible to everyone (reviewer and lecturer alike)
+                if (assessment.filePath) {
+                    const fileLink = document.getElementById('fileLink');
+                    fileLink.href = `${API_URL}/${assessment.filePath}`;
+                    document.getElementById('fileLinkWrapper').style.display = 'block';
+                    document.getElementById('noFileMessage').style.display = 'none';
+                } else {
+                    document.getElementById('fileLinkWrapper').style.display = 'none';
+                    document.getElementById('noFileMessage').style.display = 'block';
+                }
+
+                // Edit & Resubmit — visible only to the uploader (or admin), and only before Approval
+                const isOwner = user && assessment.uploader && user.id === assessment.uploader.id;
+                const isAdmin = user && user.role === 'admin';
+                const isApproved = assessment.status?.statusName === 'Approved';
+                const editSection = document.getElementById('editSection');
+
+                if ((isOwner || isAdmin) && !isApproved) {
+                    editSection.style.display = 'block';
+                    document.getElementById('editTitle').value = assessment.title;
+                    document.getElementById('editSubjectCode').value = assessment.subjectCode;
+                    document.getElementById('editAssessmentType').value = assessment.assessmentType;
+                } else {
+                    editSection.style.display = 'none';
+                }
+            } catch (err) {
+                showStatus(err.message || 'Could not reach the server.', true);
+            }
+        }
+
+        document.getElementById('editForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('title', document.getElementById('editTitle').value);
+            formData.append('subjectCode', document.getElementById('editSubjectCode').value);
+            formData.append('assessmentType', document.getElementById('editAssessmentType').value);
+
+            const fileInput = document.getElementById('editFile');
+            if (fileInput.files.length > 0) {
+                formData.append('file', fileInput.files[0]);
+            }
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/assessments/${assessmentId}`, {
+                    method: 'PUT',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: formData,
+                });
+
+                if (sessionExpired(response)) return;
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showStatus(data.error || 'Update failed.', true);
+                    return;
+                }
+
+                showStatus('Assessment updated and resubmitted for review.', false);
+                loadDetail(assessmentId);
+            } catch (err) {
+                showStatus('Could not reach the server. Is it running?', true);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        });
+
+        async function submitReview(decision) {
+            const comment = document.getElementById('feedbackText').value;
+
+            const approveBtn = document.getElementById('approveBtn');
+            const requestChangesBtn = document.getElementById('requestChangesBtn');
+            const originalApproveText = approveBtn.textContent;
+            const originalRequestText = requestChangesBtn.textContent;
+            approveBtn.disabled = true;
+            requestChangesBtn.disabled = true;
+            (decision === 'approve' ? approveBtn : requestChangesBtn).textContent = 'Submitting...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/reviews`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ assessmentId: Number(assessmentId), comment, decision }),
+                });
+
+                if (sessionExpired(response)) return;
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showStatus(data.error || 'Review submission failed.', true);
+                    return;
+                }
+
+                showStatus('Grade submitted.', false);
+                loadDetail(assessmentId); // refresh the status shown on screen
+            } catch (err) {
+                showStatus('Could not reach the server. Is it running?', true);
+            } finally {
+                approveBtn.disabled = false;
+                requestChangesBtn.disabled = false;
+                approveBtn.textContent = originalApproveText;
+                requestChangesBtn.textContent = originalRequestText;
+            }
+        }
+
+        document.getElementById('saveDraftBtn').addEventListener('click', async function (e) {
+            const comment = document.getElementById('feedbackText').value;
+
+            const btn = e.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/reviews/draft`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ assessmentId: Number(assessmentId), comment }),
+                });
+
+                if (sessionExpired(response)) return;
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showStatus(data.error || 'Failed to save draft.', true);
+                    return;
+                }
+
+                const draftNote = document.getElementById('draftSavedNote');
+                draftNote.textContent = `Draft saved at ${new Date().toLocaleTimeString()}. Not yet submitted — the assessment status is unchanged.`;
+                draftNote.style.display = 'block';
+            } catch (err) {
+                showStatus('Could not reach the server. Is it running?', true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+
+        document.getElementById('approveBtn').addEventListener('click', () => submitReview('approve'));
+        document.getElementById('requestChangesBtn').addEventListener('click', () => submitReview('request_changes'));
+    </script>
+
+</body>
+</html>

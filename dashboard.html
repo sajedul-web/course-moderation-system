@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Moderation System - Dashboard</title>
+
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Google Font: Roboto -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #D4E09B; /* Vanilla Custard */
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            background-color: #A44A3F; /* Reddish Brown */
+            padding-top: 20px;
+        }
+
+        .sidebar a {
+            color: white;
+            padding: 15px;
+            display: block;
+            text-decoration: none;
+            font-size: 18px;
+        }
+
+        .sidebar a:hover,
+        .sidebar a.active {
+            background-color: #CBDFBD; /* Tea Green */
+            color: black;
+        }
+
+        /* Main content */
+        .content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        .card-custom {
+            background-color: #CBDFBD; /* Tea Green */
+            border: none;
+            border-radius: 10px;
+        }
+
+        .navbar-custom {
+            background-color: #F6C7A9; /* Peach Dream */
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h3 class="text-center text-white mb-4">CMS</h3>
+
+        <a href="dashboard.html">Dashboard</a>
+        <a href="upload.html" id="uploadLink">Upload Assessment</a>
+        <a href="review.html">Review Assessments</a>
+        <a href="audit.html" id="auditLink" style="display:none;">Audit Log</a>
+        <a href="#" id="logoutLink">Logout</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content">
+
+        <!-- Top Navbar -->
+        <nav class="navbar navbar-custom mb-4 p-3 rounded d-flex justify-content-between align-items-center">
+            <span class="navbar-brand mb-0 h1">Course Moderation System</span>
+            <span id="welcomeText" class="text-dark"></span>
+        </nav>
+
+        <h2 class="mb-4">Dashboard Overview</h2>
+
+        <div id="loadError" class="alert alert-danger" style="display:none;"></div>
+
+        <!-- Dashboard Cards -->
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <div class="card card-custom p-3">
+                    <h4>Pending Reviews</h4>
+                    <p id="pendingCount">Loading...</p>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <div class="card card-custom p-3">
+                    <h4>Completed Reviews</h4>
+                    <p id="completedCount">Loading...</p>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <div class="card card-custom p-3">
+                    <h4>Uploaded Assessments</h4>
+                    <p id="totalCount">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assessment Table -->
+        <div class="card card-custom p-3 mt-4">
+            <h4 class="mb-3">Assessment List</h4>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Assessment Title</th>
+                        <th>Subject Code</th>
+                        <th>Status</th>
+                        <th>Reviewer</th>
+                    </tr>
+                </thead>
+
+                <tbody id="assessmentTableBody">
+                    <tr><td colspan="4" class="text-center">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+
+        // Guard: bounce back to login if there's no token at all
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        document.getElementById('welcomeText').textContent = user
+            ? `Signed in as ${user.fullName} (${user.role})`
+            : '';
+
+        // Only lecturers/admins can upload assessments — hide the link for reviewers.
+        if (user && user.role === 'reviewer') {
+            document.getElementById('uploadLink').style.display = 'none';
+        }
+
+        // Audit Log is admin-only.
+        if (user && user.role === 'admin') {
+            document.getElementById('auditLink').style.display = 'block';
+        }
+
+        document.getElementById('logoutLink').addEventListener('click', function (e) {
+            e.preventDefault();
+            clearSession();
+            window.location.href = 'login.html';
+        });
+
+        function clearSession() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+        }
+
+        function sessionExpired(response) {
+            if (response.status === 401) {
+                clearSession();
+                window.location.href = 'login.html';
+                return true;
+            }
+            return false;
+        }
+
+        // Highlight the current page's link in the sidebar
+        document.querySelectorAll('.sidebar a').forEach(link => {
+            if (link.getAttribute('href') === window.location.pathname.split('/').pop()) {
+                link.classList.add('active');
+            }
+        });
+
+        async function loadDashboard() {
+            const errorBox = document.getElementById('loadError');
+            try {
+                const response = await fetch(`${API_URL}/api/assessments`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                if (sessionExpired(response)) return;
+
+                const assessments = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(assessments.error || 'Failed to load assessments.');
+                }
+
+                // Compute the summary card counts
+                const pending = assessments.filter(a => a.status?.statusName === 'Pending').length;
+                const approved = assessments.filter(a => a.status?.statusName === 'Approved').length;
+
+                document.getElementById('pendingCount').textContent = `${pending} assessment(s) awaiting review.`;
+                document.getElementById('completedCount').textContent = `${approved} assessment(s) reviewed.`;
+                document.getElementById('totalCount').textContent = `${assessments.length} assessment(s) submitted.`;
+
+                // Build the table rows
+                const tbody = document.getElementById('assessmentTableBody');
+                tbody.innerHTML = '';
+
+                if (assessments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">No assessments uploaded yet.</td></tr>';
+                    return;
+                }
+
+                assessments.forEach(a => {
+                    const reviewerName = a.reviewer?.User?.fullName || 'Unassigned';
+                    const statusName = a.status?.statusName || 'Unknown';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><a href="review.html?id=${a.id}">${a.title}</a></td>
+                        <td>${a.subjectCode}</td>
+                        <td>${statusName}</td>
+                        <td>${reviewerName}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (err) {
+                errorBox.textContent = err.message || 'Could not reach the server. Is it running?';
+                errorBox.style.display = 'block';
+                document.getElementById('assessmentTableBody').innerHTML =
+                    '<tr><td colspan="4" class="text-center">Failed to load.</td></tr>';
+            }
+        }
+
+        loadDashboard();
+    </script>
+
+</body>
+</html>

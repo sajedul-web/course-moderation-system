@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log - Course Moderation System</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #D4E09B;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            background-color: #A44A3F;
+            padding-top: 20px;
+        }
+
+        .sidebar a {
+            color: white;
+            padding: 15px;
+            display: block;
+            text-decoration: none;
+            font-size: 18px;
+        }
+
+        .sidebar a:hover,
+        .sidebar a.active {
+            background-color: #CBDFBD;
+            color: black;
+        }
+
+        .content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        .navbar-custom {
+            background-color: #F6C7A9;
+        }
+
+        .card-custom {
+            background-color: #CBDFBD;
+            border: none;
+            border-radius: 10px;
+        }
+
+        .action-badge {
+            font-size: 0.8rem;
+            padding: 4px 10px;
+            border-radius: 12px;
+            color: white;
+            display: inline-block;
+        }
+
+        .action-UPLOAD { background-color: #6c757d; }
+        .action-EDIT { background-color: #0d6efd; }
+        .action-ASSIGN { background-color: #A44A3F; }
+        .action-REASSIGN { background-color: #fd7e14; }
+        .action-APPROVE { background-color: #198754; }
+        .action-REQUEST_CHANGES { background-color: #ffc107; color: black; }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h3 class="text-center text-white mb-4">CMS</h3>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="upload.html" id="uploadLink">Upload Assessment</a>
+        <a href="review.html">Review Assessments</a>
+        <a href="audit.html" id="auditLink" class="active">Audit Log</a>
+        <a href="#" id="logoutLink">Logout</a>
+    </div>
+
+    <div class="content">
+        <nav class="navbar navbar-custom mb-4 p-3 rounded">
+            <span class="navbar-brand mb-0 h1">Audit Log</span>
+        </nav>
+
+        <div id="notAdminMessage" class="alert alert-warning" style="display:none;">
+            Only admins can view the audit log.
+        </div>
+
+        <div id="loadError" class="alert alert-danger" style="display:none;"></div>
+
+        <div class="card card-custom p-3" id="auditCard">
+            <h4 class="mb-3">Recent Actions</h4>
+            <p class="text-muted">Showing the most recent 200 actions across the system.</p>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Action</th>
+                            <th>By</th>
+                            <th>Assessment</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditTableBody">
+                        <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        function clearSession() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+        }
+
+        function sessionExpired(response) {
+            if (response.status === 401) {
+                clearSession();
+                window.location.href = 'login.html';
+                return true;
+            }
+            return false;
+        }
+
+        document.getElementById('logoutLink').addEventListener('click', function (e) {
+            e.preventDefault();
+            clearSession();
+            window.location.href = 'login.html';
+        });
+
+        // Only lecturers/admins can upload — hide that link for reviewers.
+        if (user && user.role === 'reviewer') {
+            document.getElementById('uploadLink').style.display = 'none';
+        }
+
+        // This whole page is admin-only. Anyone else gets a clear message
+        // instead of an empty table or a confusing 403 from the API.
+        if (!user || user.role !== 'admin') {
+            document.getElementById('auditCard').style.display = 'none';
+            document.getElementById('notAdminMessage').style.display = 'block';
+        } else {
+            loadAuditLog();
+        }
+
+        const ACTION_LABELS = {
+            UPLOAD: 'Uploaded',
+            EDIT: 'Edited',
+            ASSIGN: 'Assigned',
+            REASSIGN: 'Reassigned',
+            APPROVE: 'Approved',
+            REQUEST_CHANGES: 'Requested Changes',
+        };
+
+        async function loadAuditLog() {
+            const errorBox = document.getElementById('loadError');
+            try {
+                const response = await fetch(`${API_URL}/api/audit-logs`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                if (sessionExpired(response)) return;
+
+                const logs = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(logs.error || 'Failed to load audit log.');
+                }
+
+                const tbody = document.getElementById('auditTableBody');
+                tbody.innerHTML = '';
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">No actions logged yet.</td></tr>';
+                    return;
+                }
+
+                logs.forEach(log => {
+                    const when = new Date(log.createdAt).toLocaleString();
+                    const actorName = log.actor ? `${log.actor.fullName} (${log.actor.role})` : 'Unknown user';
+                    const assessmentTitle = log.Assessment
+                        ? `${log.Assessment.title} (${log.Assessment.subjectCode})`
+                        : '—';
+                    const actionLabel = ACTION_LABELS[log.action] || log.action;
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${when}</td>
+                        <td><span class="action-badge action-${log.action}">${actionLabel}</span></td>
+                        <td>${actorName}</td>
+                        <td>${assessmentTitle}</td>
+                        <td>${log.details || ''}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (err) {
+                errorBox.textContent = err.message || 'Could not reach the server. Is it running?';
+                errorBox.style.display = 'block';
+                document.getElementById('auditTableBody').innerHTML =
+                    '<tr><td colspan="5" class="text-center">Failed to load.</td></tr>';
+            }
+        }
+    </script>
+
+</body>
+</html>

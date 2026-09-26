@@ -1,0 +1,12 @@
+node_modules/
+.env
+
+# Uploaded assessment files (keep the folder, ignore contents)
+uploads/*
+!uploads/.gitkeep
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+desktop.ini
