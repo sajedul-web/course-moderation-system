@@ -85,9 +85,9 @@ Foreign keys: `Reviewer.user_id → User.id`, `Assessment.uploaded_by → User.i
 
    | Email                  | Role      |
    |-------------------------|-----------|
-   | smith@example.edu       | reviewer  |
-   | lee@example.edu         | reviewer  |
-   | brown@example.edu       | reviewer  |
+   | ram@example.edu       | reviewer  |
+   | raj@example.edu         | reviewer  |
+   | sulav@example.edu       | reviewer  |
    | john.doe@example.edu    | lecturer  |
 
    ⚠️ `npm run seed` drops and recreates every table — only run it in
